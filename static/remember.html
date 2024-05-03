@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>코인 거래 시스템</title>
+  </head>
+  <body>
+    <h1>코인 거래 시스템</h1>
+
+    <!-- Buy 페이지로 이동하는 버튼 -->
+    <a href="/buy">
+      <button>구매 매물 등록</button>
+    </a>
+
+    <div id="order-book">
+      <h2>오더북</h2>
+      <div id="buy-orders">
+        <h3>구매 주문</h3>
+        <!-- 구매 매물 정보가 동적으로 추가될 영역 -->
+      </div>
+      <div id="sell-orders">
+        <h3>판매 주문</h3>
+        <!-- 판매 매물 정보가 동적으로 추가될 영역 -->
+      </div>
+    </div>
+
+    <!-- Sell 페이지로 이동하는 버튼 -->
+    <a href="/sell">
+      <button>판매 매물 등록</button>
+    </a>
+
+    <canvas id="orderBookChart" width="50px" height="10px"></canvas>
+
+    <script>
+      // Chart.js 라이브러리 로드
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/chart.js";
+      document.head.appendChild(script);
+
+      script.onload = () => {
+        // 캔버스 요소를 가져와 그래프를 생성합니다.
+        const ctx = document.getElementById("orderBookChart").getContext("2d");
+
+        // 초기 그래프 데이터 설정
+        const data = {
+          labels: [], // 가격 레이블
+          datasets: [
+            {
+              label: "구매 주문",
+              data: [], // 구매 주문 수량
+              backgroundColor: "rgba(0, 128, 0, 0.5)",
+              borderColor: "rgba(0, 128, 0, 1)",
+              borderWidth: 1,
+            },
+            {
+              label: "판매 주문",
+              data: [], // 판매 주문 수량
+              backgroundColor: "rgba(255, 0, 0, 0.5)",
+              borderColor: "rgba(255, 0, 0, 1)",
+              borderWidth: 1,
+            },
+          ],
+        };
+
+        // Chart.js를 사용하여 막대 차트를 생성합니다.
+        const orderBookChart = new Chart(ctx, {
+          type: "bar", // 차트 유형은 'bar'로 유지
+          data: data,
+          options: {
+            indexAxis: "y", // y축을 기준으로 수평 막대 차트로 설정
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: "수량",
+                },
+                min: -200, // x축의 최소값을 구매 주문의 최대 수량 음수로 설정
+                max: 200, // x축의 최대값은 판매 주문의 최대 수량으로 설정
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: "가격",
+                },
+              },
+            },
+          },
+        });
+
+        // 웹 소켓 연결 설정
+        const ws = new WebSocket("ws://localhost:3000");
+
+        // 웹 소켓 메시지를 수신할 때마다 차트 업데이트
+        ws.onmessage = (event) => {
+          const orderBook = JSON.parse(event.data);
+
+          // 코인별 주문을 맵으로 결합합니다.
+          const coinOrderMap = new Map();
+
+          // 각 코인별로 데이터 맵을 생성합니다.
+          orderBook.buyOrders.forEach((order) => {
+            const { name, price, quantity } = order;
+            if (!coinOrderMap.has(name)) {
+              coinOrderMap.set(name, new Map());
+            }
+            const orderMap = coinOrderMap.get(name);
+            if (!orderMap.has(price)) {
+              orderMap.set(price, { buy: 0, sell: 0 });
+            }
+            orderMap.get(price).buy += quantity;
+          });
+
+          orderBook.sellOrders.forEach((order) => {
+            const { name, price, quantity } = order;
+            if (!coinOrderMap.has(name)) {
+              coinOrderMap.set(name, new Map());
+            }
+            const orderMap = coinOrderMap.get(name);
+            if (!orderMap.has(price)) {
+              orderMap.set(price, { buy: 0, sell: 0 });
+            }
+            orderMap.get(price).sell += quantity;
+          });
+
+          // 코인별로 차트를 생성하거나 업데이트합니다.
+          for (const [coinName, orderMap] of coinOrderMap.entries()) {
+            const buyData = [];
+            const sellData = [];
+            const labels = [];
+
+            for (const [price, { buy, sell }] of orderMap.entries()) {
+              buyData.push({ y: price, x: -buy });
+              sellData.push({ y: price, x: sell });
+              labels.push(price);
+            }
+
+            // 차트 데이터 업데이트
+            const coinChart = createOrUpdateChart(
+              coinName,
+              buyData,
+              sellData,
+              labels
+            );
+            coinChart.update();
+          }
+        };
+
+        function createOrUpdateChart(coinName, buyData, sellData, labels) {
+          // 코인별로 차트 요소를 가져옵니다.
+          let coinChart = document.getElementById(`chart-${coinName}`);
+          if (!coinChart) {
+            // 차트 요소가 없으면 생성합니다.
+            const chartContainer = document.createElement("div");
+            chartContainer.id = `chart-container-${coinName}`;
+            chartContainer.innerHTML = `<h3>${coinName} 차트</h3><canvas id="chart-${coinName}"></canvas>`;
+            document.body.appendChild(chartContainer);
+
+            const ctx = document
+              .getElementById(`chart-${coinName}`)
+              .getContext("2d");
+            coinChart = new Chart(ctx, {
+              type: "bar",
+              data: {
+                labels: labels.sort((a, b) => b - a),
+                datasets: [
+                  {
+                    label: "구매 주문",
+                    data: buyData,
+                    backgroundColor: "rgba(0, 128, 0, 0.5)",
+                    borderColor: "rgba(0, 128, 0, 1)",
+                    borderWidth: 1,
+                  },
+                  {
+                    label: "판매 주문",
+                    data: sellData,
+                    backgroundColor: "rgba(255, 0, 0, 0.5)",
+                    borderColor: "rgba(255, 0, 0, 1)",
+                    borderWidth: 1,
+                  },
+                ],
+              },
+              options: {
+                indexAxis: "y",
+                scales: {
+                  x: {
+                    title: {
+                      display: true,
+                      text: "수량",
+                    },
+                    min: -200,
+                    max: 200,
+                  },
+                  y: {
+                    title: {
+                      display: true,
+                      text: "가격",
+                    },
+                  },
+                },
+              },
+            });
+
+            return coinChart;
+          }
+
+          // 차트 업데이트
+          coinChart.data.datasets[0].data = buyData;
+          coinChart.data.datasets[1].data = sellData;
+          coinChart.data.labels = labels.sort((a, b) => b - a);
+
+          return coinChart;
+        }
+      };
+    </script>
+  </body>
+</html>

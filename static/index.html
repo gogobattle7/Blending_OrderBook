@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>코인 거래 시스템</title>
+</head>
+<body>
+    <h1>코인 거래 시스템</h1>
+
+    <!-- 구매 매물 등록 버튼 -->
+    <a href="/buy">
+        <button>구매 매물 등록</button>
+    </a>
+
+    <!-- 코인 이름 목록 -->
+    <div id="coin-list">
+        <h2>코인 이름</h2>
+        <!-- 코인 이름이 동적으로 추가될 영역 -->
+    </div>
+
+    <!-- 판매 매물 등록 버튼 -->
+    <a href="/sell">
+        <button>판매 매물 등록</button>
+    </a>
+
+    <script>
+        // 코인 이름 목록을 가져옵니다.
+        fetch('/api/coins')
+            .then(response => response.json())
+            .then(data => {
+                console.log('코인 목록:', data); // 응답 데이터 로그
+                const coinList = document.getElementById('coin-list');
+                
+                // 코인 이름 목록을 동적으로 추가합니다.
+                data.forEach(coin => {
+                    const coinElement = document.createElement('a');
+                    // order_book.html로 연결할 수 있도록 href 속성 설정
+                    coinElement.href = `order_book?coin=${encodeURIComponent(coin)}`;
+                    coinElement.textContent = coin;
+                    
+                    const listItem = document.createElement('div');
+                    listItem.appendChild(coinElement);
+                    coinList.appendChild(listItem);
+                });
+            })
+            .catch(error => {
+                console.error('코인 이름 목록을 가져오는 데 실패했습니다:', error);
+            });
+    </script>
+</body>
+</html>
