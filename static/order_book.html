@@ -1,258 +1,299 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>오더북</title>
-    <!-- Chart.js 라이브러리 로드 -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  </head>
-  <body>
-    <h1 id="coin-name-title"></h1>
+<head>
+  <title>오더북</title>
+  <!-- Chart.js 라이브러리 로드 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* 구매 주문, 판매 주문, 체결 목록을 숨길 수 있도록 설정 */
+    #buy-orders,
+    #sell-orders,
+    #matched-trades {
+      display: none;
+    }
 
-    <div id="order-book">
-      <h2>오더북</h2>
-      <h3>구매 주문</h3>
-      <div id="buy-orders">
-        
-        <!-- 구매 매물 정보가 동적으로 추가될 영역 -->
-      </div>
-      <h3>판매 주문</h3>
-      <div id="sell-orders">
-        <!-- 판매 매물 정보가 동적으로 추가될 영역 -->
-      </div>
+    /* 제목에 커서 모양을 포인터로 변경 */
+    h3 {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1 id="coin-name-title"></h1>
+
+  <div id="order-book">
+    <h2>오더북</h2>
+
+    <!-- 구매 주문 섹션 -->
+    <h3 id="buy-orders-title">구매 주문</h3>
+    <div id="buy-orders">
+      <!-- 구매 매물 정보가 동적으로 추가될 영역 -->
     </div>
 
-    <h2>체결된 거래 목록</h2>
-    <div id="matched-trades">
-      <!-- 체결된 거래 목록이 동적으로 추가될 영역 -->
+    <!-- 판매 주문 섹션 -->
+    <h3 id="sell-orders-title">판매 주문</h3>
+    <div id="sell-orders">
+      <!-- 판매 매물 정보가 동적으로 추가될 영역 -->
     </div>
+  </div>
 
-    <!-- 캔버스 요소 추가 -->
-    <canvas id="orderBookChart" width="50px" height="10px"></canvas>
+  <!-- 체결된 거래 목록 섹션 -->
+  <h2>체결된 거래 목록</h2>
+  <h3 id="matched-trades-title">체결된 거래 목록</h3>
+  <div id="matched-trades">
+    <!-- 체결된 거래 목록이 동적으로 추가될 영역 -->
+  </div>
 
-    <script>
-      // 코인 이름을 URL 매개변수에서 가져옵니다.
-      const urlParams = new URLSearchParams(window.location.search);
-      const coinName = urlParams.get("coin");
+  <!-- 캔버스 요소 추가 -->
+  <canvas id="orderBookChart" width="50px" height="20px"></canvas>
 
-      // 페이지 제목에 코인 이름을 표시합니다.
-      document.getElementById(
-        "coin-name-title"
-      ).textContent = `${coinName} 오더북`;
+  <script>
+    // 코인 이름을 URL 매개변수에서 가져옵니다.
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const coinName = urlParams.get("coin");
 
-      let chartInstance; // 차트 인스턴스 변수를 전역 변수로 선언
+    // 페이지 제목에 코인 이름을 표시합니다.
+    document.getElementById(
+      "coin-name-title"
+    ).textContent = `${coinName} 오더북`;
 
-      // 코인별 오더북 정보를 가져오는 함수
-      function fetchOrderBookData() {
-        fetch(`/api/order_book?coin=${encodeURIComponent(coinName)}`)
+    let chartInstance; // 차트 인스턴스 변수를 전역 변수로 선언
+
+    // 구매 주문, 판매 주문, 체결된 거래 목록 섹션을 토글하는 함수
+    function toggleSection(sectionId) {
+      const section = document.getElementById(sectionId);
+      section.style.display = section.style.display === 'none' ? 'block' : 'none';
+    }
+
+    // 제목에 클릭 이벤트를 추가합니다.
+    document.getElementById('buy-orders-title').addEventListener('click', () => {
+      toggleSection('buy-orders');
+    });
+
+    document.getElementById('sell-orders-title').addEventListener('click', () => {
+      toggleSection('sell-orders');
+    });
+
+    document.getElementById('matched-trades-title').addEventListener('click', () => {
+      toggleSection('matched-trades');
+    });
+
+    // 코인별 오더북 정보를 가져오는 함수
+    function fetchOrderBookData() {
+      fetch(`/api/order_book?coin=${encodeURIComponent(coinName)}`)
+        .then((response) => response.json())
+        .then((data) => {
+          updateOrderBook(data);
+        })
+        .catch((error) => {
+          console.error("오더북 정보를 가져오는 데 실패했습니다:", error);
+        });
+    }
+
+    // 오더북 데이터를 사용하여 차트를 업데이트하는 함수
+    function updateOrderBook(data) {
+      const buyOrdersDiv = document.getElementById("buy-orders");
+      const sellOrdersDiv = document.getElementById("sell-orders");
+
+      // 구매 주문을 추가합니다.
+      const buyDataMap = new Map();
+      buyOrdersDiv.innerHTML = ''; // 기존 내용을 초기화
+      data.buyOrders.forEach((order) => {
+        const orderDiv = document.createElement("div");
+        orderDiv.textContent = `가격: ${order.price} - 수량: ${order.quantity} - 구매자 ID: ${order.buyerId}`;
+        buyOrdersDiv.appendChild(orderDiv);
+
+        const existingOrder = buyDataMap.get(order.price);
+        if (existingOrder) {
+          existingOrder.x -= order.quantity;
+        } else {
+          buyDataMap.set(order.price, {
+            y: order.price,
+            x: -order.quantity,
+          });
+        }
+      });
+
+      // 판매 주문을 추가합니다.
+      const sellDataMap = new Map();
+      sellOrdersDiv.innerHTML = ''; // 기존 내용을 초기화
+      data.sellOrders.forEach((order) => {
+        const orderDiv = document.createElement("div");
+        orderDiv.textContent = `가격: ${order.price} - 수량: ${order.quantity} - 판매자 ID: ${order.sellerId}`;
+        sellOrdersDiv.appendChild(orderDiv);
+
+        const existingOrder = sellDataMap.get(order.price);
+        if (existingOrder) {
+          existingOrder.x += order.quantity;
+        } else {
+          sellDataMap.set(order.price, {
+            y: order.price,
+            x: order.quantity,
+          });
+        }
+      });
+
+      // Map을 배열로 변환하여 차트 데이터를 설정합니다.
+      const buyData = Array.from(buyDataMap.values());
+      const sellData = Array.from(sellDataMap.values());
+
+      // 차트가 이미 생성되었다면 데이터만 업데이트합니다.
+      if (chartInstance) {
+        chartInstance.data.datasets[0].data = buyData;
+        chartInstance.data.datasets[1].data = sellData;
+        chartInstance.update();
+      } else {
+        // 차트가 아직 생성되지 않았다면 차트를 생성합니다.
+        const ctx = document
+          .getElementById("orderBookChart")
+          .getContext("2d");
+        const yLabels = Array.from({ length: 50 }, (_, i) => 50 - i);
+
+        const chartData = {
+          labels: yLabels,
+          datasets: [
+            {
+              label: "구매 주문",
+              data: buyData,
+              backgroundColor: "rgba(0, 128, 0, 0.5)",
+              borderColor: "rgba(0, 128, 0, 1)",
+              borderWidth: 1,
+            },
+            {
+              label: "판매 주문",
+              data: sellData,
+              backgroundColor: "rgba(255, 0, 0, 0.5)",
+              borderColor: "rgba(255, 0, 0, 1)",
+              borderWidth: 1,
+            },
+          ],
+        };
+
+        // Chart.js를 사용하여 막대 차트를 생성합니다.
+        chartInstance = new Chart(ctx, {
+          type: "bar",
+          data: chartData,
+          options: {
+            indexAxis: "y",
+            scales: {
+              x: {
+                title: {
+                  display: true,
+                  text: "수량",
+                },
+                min: -50,
+                max: 50,
+              },
+              y: {
+                title: {
+                  display: true,
+                  text: "가격",
+                },
+                ticks: {
+                  stepSize: 1,
+                  min: 1,
+                  max: 100,
+                },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    // 체결된 거래 목록을 업데이트하는 함수
+    function updateMatchedTrades() {
+      fetch(`/api/matched_trades?coin=${encodeURIComponent(coinName)}`)
+        .then((response) => response.json())
+        .then((trades) => {
+          const matchedTradesDiv = document.getElementById("matched-trades");
+          matchedTradesDiv.innerHTML = "";
+
+          trades.forEach((trade) => {
+            const tradeDiv = document.createElement("div");
+            tradeDiv.textContent = `가격: ${trade.price} - 수량: ${trade.quantity} - 구매자 ID: ${trade.buyerId} - 판매자 ID: ${trade.sellerId}`;
+            matchedTradesDiv.appendChild(tradeDiv);
+          });
+        })
+        .catch((error) => {
+          console.error(
+            "체결된 거래 목록을 가져오는 데 실패했습니다:",
+            error
+          );
+        });
+    }
+
+    // 구매 및 판매 주문을 1초마다 수행하는 함수
+    function createRandomOrder() {
+      const isBuyOrder = Math.random() > 0.5;
+      const price = Math.floor(Math.random() * 51) + 1;
+      const quantity = Math.floor(Math.random() * 10) + 1;
+
+      // 구매자 또는 판매자 ID를 생성합니다.
+      const id = `id${Math.floor(Math.random() * 1000)}`;
+
+      if (isBuyOrder) {
+        // 구매 주문을 생성합니다.
+        const buyOrderData = {
+          name: coinName,
+          price,
+          quantity,
+          buyerId: id,
+        };
+
+        // 서버로 구매 주문을 POST 요청으로 전송합니다.
+        fetch("/api/buy", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(buyOrderData),
+        })
           .then((response) => response.json())
           .then((data) => {
-            updateOrderBook(data);
+            console.log("구매 주문 성공:", data);
           })
           .catch((error) => {
-            console.error("오더북 정보를 가져오는 데 실패했습니다:", error);
+            console.error("구매 주문 실패:", error);
           });
-      }
+      } else {
+        // 판매 주문을 생성합니다.
+        const sellOrderData = {
+          name: coinName,
+          price,
+          quantity,
+          sellerId: id,
+        };
 
-      // 오더북 데이터를 사용하여 차트를 업데이트하는 함수
-      function updateOrderBook(data) {
-        const buyOrdersDiv = document.getElementById("buy-orders");
-        const sellOrdersDiv = document.getElementById("sell-orders");
-        // 구매 주문을 추가합니다.
-        const buyDataMap = new Map();
-        data.buyOrders.forEach((order) => {
-          const orderDiv = document.createElement("div");
-          orderDiv.textContent = `가격: ${order.price} - 수량: ${order.quantity} - 구매자 ID: ${order.buyerId}`;
-          buyOrdersDiv.appendChild(orderDiv);
-
-          const existingOrder = buyDataMap.get(order.price);
-          if (existingOrder) {
-            existingOrder.x -= order.quantity;
-          } else {
-            buyDataMap.set(order.price, {
-              y: order.price,
-              x: -order.quantity,
-            });
-          }
-        });
-
-        // 판매 주문을 추가합니다.
-        const sellDataMap = new Map();
-        data.sellOrders.forEach((order) => {
-          const orderDiv = document.createElement("div");
-          orderDiv.textContent = `가격: ${order.price} - 수량: ${order.quantity} - 판매자 ID: ${order.sellerId}`;
-          sellOrdersDiv.appendChild(orderDiv);
-
-          const existingOrder = sellDataMap.get(order.price);
-          if (existingOrder) {
-            existingOrder.x += order.quantity;
-          } else {
-            sellDataMap.set(order.price, {
-              y: order.price,
-              x: order.quantity,
-            });
-          }
-        });
-
-        // Map을 배열로 변환하여 차트 데이터를 설정합니다.
-        const buyData = Array.from(buyDataMap.values());
-        const sellData = Array.from(sellDataMap.values());
-
-        // 차트가 이미 생성되었다면 데이터만 업데이트합니다.
-        if (chartInstance) {
-          chartInstance.data.datasets[0].data = buyData;
-          chartInstance.data.datasets[1].data = sellData;
-          chartInstance.update();
-        } else {
-          // 차트가 아직 생성되지 않았다면 차트를 생성합니다.
-          const ctx = document
-            .getElementById("orderBookChart")
-            .getContext("2d");
-          const yLabels = Array.from({ length: 50 }, (_, i) => 50 - i);
-
-          const chartData = {
-            labels: yLabels,
-            datasets: [
-              {
-                label: "구매 주문",
-                data: buyData,
-                backgroundColor: "rgba(0, 128, 0, 0.5)",
-                borderColor: "rgba(0, 128, 0, 1)",
-                borderWidth: 1,
-              },
-              {
-                label: "판매 주문",
-                data: sellData,
-                backgroundColor: "rgba(255, 0, 0, 0.5)",
-                borderColor: "rgba(255, 0, 0, 1)",
-                borderWidth: 1,
-              },
-            ],
-          };
-
-          // Chart.js를 사용하여 막대 차트를 생성합니다.
-          chartInstance = new Chart(ctx, {
-            type: "bar",
-            data: chartData,
-            options: {
-              indexAxis: "y",
-              scales: {
-                x: {
-                  title: {
-                    display: true,
-                    text: "수량",
-                  },
-                  min: -200,
-                  max: 200,
-                },
-                y: {
-                  title: {
-                    display: true,
-                    text: "가격",
-                  },
-                  ticks: {
-                    stepSize: 1,
-                    min: 1,
-                    max: 50,
-                  },
-                },
-              },
-            },
-          });
-        }
-      }
-
-      // 체결된 거래 목록을 업데이트하는 함수
-      function updateMatchedTrades() {
-        fetch(`/api/matched_trades?coin=${encodeURIComponent(coinName)}`)
+        // 서버로 판매 주문을 POST 요청으로 전송합니다.
+        fetch("/api/sell", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(sellOrderData),
+        })
           .then((response) => response.json())
-          .then((trades) => {
-            const matchedTradesDiv = document.getElementById("matched-trades");
-            matchedTradesDiv.innerHTML = "";
-
-            trades.forEach((trade) => {
-              const tradeDiv = document.createElement("div");
-              tradeDiv.textContent = `가격: ${trade.price} - 수량: ${trade.quantity} - 구매자 ID: ${trade.buyerId} - 판매자 ID: ${trade.sellerId}`;
-              matchedTradesDiv.appendChild(tradeDiv);
-            });
+          .then((data) => {
+            console.log("판매 주문 성공:", data);
           })
           .catch((error) => {
-            console.error(
-              "체결된 거래 목록을 가져오는 데 실패했습니다:",
-              error
-            );
+            console.error("판매 주문 실패:", error);
           });
       }
+    }
 
-      // 구매 및 판매 주문을 1초마다 수행하는 함수
-      function createRandomOrder() {
-        const isBuyOrder = Math.random() > 0.5;
-        const price = Math.floor(Math.random() * 51) + 1;
-        const quantity = Math.floor(Math.random() * 10) + 1;
+    // 1초마다 무작위 주문을 생성 및 전송합니다.
+    setInterval(createRandomOrder, 1000);
 
-        // 구매자 또는 판매자 ID를 생성합니다.
-        const id = `id${Math.floor(Math.random() * 1000)}`;
+    // 차트 및 거래 목록을 3초마다 업데이트합니다.
+    function updateChart() {
+      fetchOrderBookData();
+      updateMatchedTrades();
+    }
 
-        if (isBuyOrder) {
-          // 구매 주문을 생성합니다.
-          const buyOrderData = {
-            name: coinName,
-            price,
-            quantity,
-            buyerId: id,
-          };
-
-          // 서버로 구매 주문을 POST 요청으로 전송합니다.
-          fetch("/api/buy", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(buyOrderData),
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              console.log("구매 주문 성공:", data);
-            })
-            .catch((error) => {
-              console.error("구매 주문 실패:", error);
-            });
-        } else {
-          // 판매 주문을 생성합니다.
-          const sellOrderData = {
-            name: coinName,
-            price,
-            quantity,
-            sellerId: id,
-          };
-
-          // 서버로 판매 주문을 POST 요청으로 전송합니다.
-          fetch("/api/sell", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(sellOrderData),
-          })
-            .then((response) => response.json())
-            .then((data) => {
-              console.log("판매 주문 성공:", data);
-            })
-            .catch((error) => {
-              console.error("판매 주문 실패:", error);
-            });
-        }
-      }
-
-      // 1초마다 무작위 주문을 생성 및 전송합니다.
-      setInterval(createRandomOrder, 1000);
-
-      // 차트 및 거래 목록을 3초마다 업데이트합니다.
-      function updateChart() {
-        fetchOrderBookData();
-        updateMatchedTrades();
-      }
-
-      setInterval(updateChart, 3000);
-    </script>
-  </body>
+    setInterval(updateChart, 3000);
+  </script>
+</body>
 </html>
